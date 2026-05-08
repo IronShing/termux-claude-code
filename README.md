@@ -17,7 +17,7 @@ This wrapper:
 2. At install time, fetches the upstream `linux-arm64-musl` binary directly from the npm registry (with sha1 + sha512 verification against the registry's own metadata) — bypassing npm's `os: ["linux"]` filter that would otherwise skip it on Android.
 3. Fetches the `musl` libc dynamic loader from Alpine Linux's CDN (sha256-pinned in `package.json`).
 4. Installs a `claude` shim that runs the binary via the bundled musl loader: no `patchelf`, no system-path writes, no root.
-5. Sets `autoUpdates: false` in `~/.claude/settings.json`, exports `DISABLE_AUTOUPDATER=1` from the shim, and `chmod -R a-w`'s the upstream binary directory — three layers of defense against the in-process auto-updater silently re-fetching `latest` and clobbering our pin.
+5. Sets `autoUpdates: false` in `~/.claude/settings.json`, exports `DISABLE_AUTOUPDATER=1` from the shim, and `chmod a-w`'s the upstream binary file — three layers of defense against the in-process auto-updater silently re-fetching `latest` and clobbering our pin.
 
 **Resilient bootstrap.** Postinstall on Termux can be flaky (npm spawn-shell quirks with github sources, cwd resolution issues, etc). To survive that:
 
@@ -93,7 +93,7 @@ When in doubt, run `node $(npm root -g)/termux-claude-code/install.js --check` f
 | `[termux-claude-code] Bootstrap failed.` | Network / Alpine CDN hiccup, transient HTTPS error, or corrupt download | Re-run: `node $(npm root -g)/termux-claude-code/install.js --debug` |
 | `claude --version` hangs / never returns | musl loader / Bionic kernel mismatch (the unproven failure mode) | Run `claude doctor`. If "claude binary executes" fails, paste full `--check` output to a new issue. |
 | `doctor: settings.json autoUpdates is false: missing` | Manual edit removed it | Re-run install or set manually in `~/.claude/settings.json` |
-| `doctor: upstream binary dir is read-only (lockdown): writable` | Lockdown failed during postinstall (non-fatal) | `chmod -R a-w $(npm root -g)/termux-claude-code/vendor/upstream-musl` |
+| `doctor: upstream binary is read-only (lockdown): writable` | Lockdown failed during postinstall (non-fatal) | `chmod a-w $(npm root -g)/termux-claude-code/vendor/upstream-musl/claude` |
 | `EBADPLATFORM` warning on install | Cosmetic — npm noticing the os filter | Safe to ignore. The wrapper sideloads the binary out-of-band. |
 | `claude` works but pasting into a new dir hangs | Repo-trust prompt — upstream waits on TTY | Make sure you have a real TTY; `script -q /dev/null claude` if running under a wrapped shell |
 | `npm error spawn sh ENOENT` during install | Should not happen — we removed the upstream dep precisely to avoid this. If you see it, please file an issue. | Workaround: `npm config set script-shell $PREFIX/bin/sh && npm install -g termux-claude-code` |

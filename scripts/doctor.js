@@ -69,8 +69,8 @@ check('upstream version pin matches package.json', () => {
   return installed
 })
 
-check('upstream binary dir is read-only (lockdown)', () => {
-  const p = path.dirname(binaryPath(PKG_ROOT))
+check('upstream binary is read-only (lockdown)', () => {
+  const p = binaryPath(PKG_ROOT)
   const st = fs.statSync(p)
   if ((st.mode & 0o222) !== 0) throw new Error(`writable mode=${(st.mode & 0o7777).toString(8)}`)
   return `mode=${(st.mode & 0o7777).toString(8)}`
