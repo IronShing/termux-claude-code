@@ -19,6 +19,12 @@ This wrapper:
 4. Installs a `claude` shim that runs the binary via the bundled musl loader: no `patchelf`, no system-path writes, no root.
 5. Sets `autoUpdates: false` in `~/.claude/settings.json`, exports `DISABLE_AUTOUPDATER=1` from the shim, and `chmod -R a-w`'s the upstream binary directory — three layers of defense against the in-process auto-updater silently re-fetching `latest` and clobbering our pin.
 
+**Resilient bootstrap.** Postinstall on Termux can be flaky (npm spawn-shell quirks with github sources, cwd resolution issues, etc). To survive that:
+
+- Postinstall runs install logic via absolute paths (no reliance on cwd) and is best-effort — even if it fails, `npm install` reports success.
+- The `claude` shim itself detects an incomplete `vendor/` directory and runs the bootstrap inline on first invocation. Subsequent runs are zero-overhead.
+- **We do not depend on `@anthropic-ai/claude-code` as an npm dependency.** Doing so would chain-trigger upstream's own postinstall, which fails on Termux with `spawn sh ENOENT` (Termux has no `/bin/sh`). Instead we sideload the binary directly from the npm registry, sidestepping the failure entirely.
+
 ## Install (Termux)
 
 ```sh
@@ -78,16 +84,19 @@ npm uninstall -g termux-claude-code
 
 ## Troubleshooting
 
+When in doubt, run `node $(npm root -g)/termux-claude-code/install.js --check` for a status report, or `--debug` to re-bootstrap with verbose output.
+
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | `claude: command not found` | npm global bin not on `$PATH` | `echo 'export PATH=$PATH:$(npm config get prefix)/bin' >> ~/.bashrc && source ~/.bashrc` |
-| `musl loader missing at .../ld-musl-aarch64.so.1` | postinstall didn't run (e.g. `--ignore-scripts`) | `cd $(npm root -g)/termux-claude-code && node install.js` |
-| `upstream binary missing at .../claude` | postinstall failed mid-download | Same as above; check for transient HTTPS errors in output |
-| `claude --version` hangs / never returns | musl loader / Bionic kernel mismatch | Run `claude doctor`. If "claude binary executes" fails, paste output to a new issue — this is the failure-mode the wrapper most needs to learn about. |
-| `doctor: settings.json autoUpdates is false: missing` | Manual edit removed it | Run `npm install -g termux-claude-code` again or set it manually in `~/.claude/settings.json` |
-| `doctor: upstream binary dir is read-only (lockdown): writable` | Lockdown failed during postinstall | Manually: `chmod -R a-w $(npm root -g)/termux-claude-code/vendor/upstream-musl` |
-| `EBADPLATFORM` warning on install | Cosmetic — npm noticing the os filter | Safe to ignore; the wrapper handles the binary out-of-band |
+| `[termux-claude-code] First-run bootstrap…` on first `claude` invocation | Postinstall didn't complete; shim is recovering. Expected behaviour. | Wait — it downloads ~225 MB once. Subsequent runs are instant. |
+| `[termux-claude-code] Bootstrap failed.` | Network / Alpine CDN hiccup, transient HTTPS error, or corrupt download | Re-run: `node $(npm root -g)/termux-claude-code/install.js --debug` |
+| `claude --version` hangs / never returns | musl loader / Bionic kernel mismatch (the unproven failure mode) | Run `claude doctor`. If "claude binary executes" fails, paste full `--check` output to a new issue. |
+| `doctor: settings.json autoUpdates is false: missing` | Manual edit removed it | Re-run install or set manually in `~/.claude/settings.json` |
+| `doctor: upstream binary dir is read-only (lockdown): writable` | Lockdown failed during postinstall (non-fatal) | `chmod -R a-w $(npm root -g)/termux-claude-code/vendor/upstream-musl` |
+| `EBADPLATFORM` warning on install | Cosmetic — npm noticing the os filter | Safe to ignore. The wrapper sideloads the binary out-of-band. |
 | `claude` works but pasting into a new dir hangs | Repo-trust prompt — upstream waits on TTY | Make sure you have a real TTY; `script -q /dev/null claude` if running under a wrapped shell |
+| `npm error spawn sh ENOENT` during install | Should not happen — we removed the upstream dep precisely to avoid this. If you see it, please file an issue. | Workaround: `npm config set script-shell $PREFIX/bin/sh && npm install -g termux-claude-code` |
 
 ## How it works (technical)
 

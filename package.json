@@ -1,6 +1,6 @@
 {
   "name": "termux-claude-code",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Run the latest security-patched @anthropic-ai/claude-code on Termux (Android). Community-maintained wrapper. Not affiliated with Anthropic.",
   "keywords": [
     "claude",
@@ -27,7 +27,7 @@
     "claude": "bin/claude"
   },
   "scripts": {
-    "postinstall": "node install.js",
+    "postinstall": "node -e \"const p=require('path'),cp=require('child_process');const j=process.env.npm_package_json;const root=j?p.dirname(j):__dirname;const r=cp.spawnSync(process.execPath,[p.join(root,'install.js')],{stdio:'inherit',cwd:root});if(r.status!==0){console.error('[termux-claude-code] postinstall non-fatal failure (exit '+r.status+'). The bin/claude shim will bootstrap on first run.');console.error('  Manual debug: cd '+root+' && node install.js --debug');}process.exit(0)\"",
     "doctor": "node scripts/doctor.js",
     "check-upstream": "node scripts/check-upstream.js",
     "lint": "node --check install.js && node --check scripts/doctor.js && node --check scripts/check-upstream.js && for f in lib/*.js; do node --check \"$f\" || exit 1; done && bash -n bin/claude"
@@ -40,9 +40,6 @@
     "README.md",
     "LICENSE"
   ],
-  "dependencies": {
-    "@anthropic-ai/claude-code": "2.1.133"
-  },
   "termuxClaudeCode": {
     "upstreamPin": "2.1.133",
     "muslApk": {
