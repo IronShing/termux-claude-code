@@ -1,0 +1,57 @@
+{
+  "name": "termux-claude-code",
+  "version": "0.1.0",
+  "description": "Run the latest security-patched @anthropic-ai/claude-code on Termux (Android). Community-maintained wrapper. Not affiliated with Anthropic.",
+  "keywords": [
+    "claude",
+    "claude-code",
+    "termux",
+    "android",
+    "anthropic",
+    "wrapper"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/IronShing/termux-claude-code.git"
+  },
+  "bugs": {
+    "url": "https://github.com/IronShing/termux-claude-code/issues"
+  },
+  "homepage": "https://github.com/IronShing/termux-claude-code#readme",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "bin": {
+    "claude": "bin/claude"
+  },
+  "scripts": {
+    "postinstall": "node install.js",
+    "doctor": "node scripts/doctor.js",
+    "check-upstream": "node scripts/check-upstream.js",
+    "lint": "node --check install.js && node --check scripts/doctor.js && node --check scripts/check-upstream.js && for f in lib/*.js; do node --check \"$f\" || exit 1; done && bash -n bin/claude"
+  },
+  "files": [
+    "install.js",
+    "lib/",
+    "bin/",
+    "scripts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "@anthropic-ai/claude-code": "2.1.133"
+  },
+  "termuxClaudeCode": {
+    "upstreamPin": "2.1.133",
+    "muslApk": {
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.21/main/aarch64/musl-1.2.5-r11.apk",
+      "sha256": "721010e6bff908878d9c527428598661be59dde0d9f013f8431d01fd4dd16652",
+      "mirrors": [
+        "https://mirrors.edge.kernel.org/alpine/v3.21/main/aarch64/musl-1.2.5-r11.apk",
+        "https://mirror.csclub.uwaterloo.ca/alpine/v3.21/main/aarch64/musl-1.2.5-r11.apk"
+      ]
+    }
+  }
+}

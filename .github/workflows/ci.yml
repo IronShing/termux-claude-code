@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-and-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: syntax-check JS + bash
+        run: npm run lint
+
+      - name: npm pack (dry-run, no postinstall)
+        env:
+          npm_config_ignore_scripts: 'true'
+        run: |
+          npm pack --dry-run
+          npm pack
+          ls -la *.tgz
+          tar -tzf *.tgz | sort
+
+      - name: tarball size sanity (must be < 100 KB)
+        run: |
+          size=$(stat -c%s *.tgz)
+          echo "tarball size: $size bytes"
+          if [ "$size" -gt 102400 ]; then
+            echo "Tarball is too large — check .npmignore / files in package.json" >&2
+            exit 1
+          fi
+
+  upstream-resolves:
+    # Independent check: the pinned upstream version actually resolves on npm.
+    # Catches the case where Anthropic unpublishes / yanks our pinned version.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: pinned upstream version resolves
+        run: |
+          PIN=$(node -p "require('./package.json').termuxClaudeCode.upstreamPin")
+          echo "Checking @anthropic-ai/claude-code@$PIN and -linux-arm64-musl@$PIN"
+          npm view "@anthropic-ai/claude-code@$PIN" version
+          npm view "@anthropic-ai/claude-code-linux-arm64-musl@$PIN" dist.tarball
+
+  musl-url-resolves:
+    # The Alpine APK URL pinned in package.json must still serve. If Alpine
+    # rotates the package, our install breaks for new users — catch it here.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: musl APK URL serves the pinned sha256
+        run: |
+          URL=$(node -p "require('./package.json').termuxClaudeCode.muslApk.url")
+          SHA=$(node -p "require('./package.json').termuxClaudeCode.muslApk.sha256")
+          echo "Fetching $URL"
+          curl -fsSL --retry 3 -o musl.apk "$URL"
+          ACTUAL=$(sha256sum musl.apk | awk '{print $1}')
+          if [ "$ACTUAL" != "$SHA" ]; then
+            echo "sha256 mismatch — expected $SHA got $ACTUAL" >&2
+            exit 1
+          fi
+          echo "OK"

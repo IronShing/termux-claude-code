@@ -1,0 +1,43 @@
+#!/data/data/com.termux/files/usr/bin/env bash
+# termux-claude-code: bin/claude shim
+#
+# Resolves the package root from this script's real path (handles npm's
+# global bin symlink), then exec's the upstream native binary via the
+# bundled musl loader. The musl libc + dynamic loader live under
+# vendor/musl/lib; the upstream Bun-compiled binary lives under
+# vendor/upstream-musl/claude.
+#
+# We run the binary via `<loader> --library-path <musl libdir> <binary>` so we
+# don't have to patchelf the binary's INTERP, and so it works without any
+# system-path writes (no /lib mounts, no root, no symlinks outside our own
+# package dir).
+set -euo pipefail
+
+# Resolve script real path (follow symlinks). readlink -f is on Termux's coreutils.
+SELF="$(readlink -f "$0" 2>/dev/null || python3 -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$0")"
+PKG_ROOT="$(cd "$(dirname "$SELF")/.." && pwd)"
+
+LOADER="$PKG_ROOT/vendor/musl/lib/ld-musl-aarch64.so.1"
+LIBDIR="$PKG_ROOT/vendor/musl/lib"
+BINARY="$PKG_ROOT/vendor/upstream-musl/claude"
+
+if [ ! -x "$LOADER" ]; then
+  echo "termux-claude-code: musl loader missing at $LOADER" >&2
+  echo "  Re-run: npm install -g termux-claude-code" >&2
+  exit 127
+fi
+if [ ! -f "$BINARY" ]; then
+  echo "termux-claude-code: upstream binary missing at $BINARY" >&2
+  echo "  Re-run: npm install -g termux-claude-code" >&2
+  exit 127
+fi
+
+# Belt-and-braces auto-updater defense: even if ~/.claude/settings.json is
+# missing or wrong, the env var still wins for code paths that read it.
+export DISABLE_AUTOUPDATER="${DISABLE_AUTOUPDATER:-1}"
+
+# CLAUDE_CODE_INSTALLED_VIA_NPM_WRAPPER is what upstream's cli-wrapper.cjs sets;
+# we set it too so any upstream telemetry attribution stays accurate.
+export CLAUDE_CODE_INSTALLED_VIA_NPM_WRAPPER="${CLAUDE_CODE_INSTALLED_VIA_NPM_WRAPPER:-1}"
+
+exec "$LOADER" --library-path "$LIBDIR" "$BINARY" "$@"

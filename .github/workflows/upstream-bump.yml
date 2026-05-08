@@ -1,0 +1,70 @@
+name: Upstream version bump
+
+on:
+  schedule:
+    # Weekly, Monday 12:00 UTC. Anthropic ships ~3 versions/week; weekly is
+    # frequent enough to keep CVE windows narrow without churn-flooding.
+    - cron: '0 12 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+
+      - name: resolve target upstream version
+        id: target
+        run: |
+          set -euo pipefail
+          OUT=$(node scripts/check-upstream.js)
+          echo "$OUT"
+          if [[ "$OUT" == UP_TO_DATE* ]]; then
+            echo "needs_bump=false" >> "$GITHUB_OUTPUT"
+          else
+            VERSION=$(echo "$OUT" | awk '{print $2}')
+            echo "needs_bump=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: bump pinned version + dependency
+        if: steps.target.outputs.needs_bump == 'true'
+        env:
+          VERSION: ${{ steps.target.outputs.version }}
+        run: |
+          set -euo pipefail
+          node -e "
+            const fs = require('fs');
+            const p = JSON.parse(fs.readFileSync('package.json','utf8'));
+            p.termuxClaudeCode.upstreamPin = process.env.VERSION;
+            p.dependencies['@anthropic-ai/claude-code'] = process.env.VERSION;
+            fs.writeFileSync('package.json', JSON.stringify(p, null, 2) + '\n');
+          "
+          git diff -- package.json
+
+      - name: open PR
+        if: steps.target.outputs.needs_bump == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: 'chore: bump upstream pin to @anthropic-ai/claude-code@${{ steps.target.outputs.version }}'
+          branch: bot/upstream-bump-${{ steps.target.outputs.version }}
+          delete-branch: true
+          title: 'chore: bump upstream pin to ${{ steps.target.outputs.version }}'
+          body: |
+            Automated weekly upstream-pin bump.
+
+            - Previous pin: see diff
+            - New pin: `${{ steps.target.outputs.version }}` (Anthropic's `dist-tags.stable` if set, otherwise `latest`)
+            - Source: https://www.npmjs.com/package/@anthropic-ai/claude-code
+
+            CI verifies the new version resolves on npm and that the musl APK URL still serves.
+            Before merging, please skim the upstream release notes / commits for any new
+            unpatched CVEs that would warrant holding the bump:
+            https://github.com/anthropics/claude-code/releases

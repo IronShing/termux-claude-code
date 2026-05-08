@@ -1,0 +1,8 @@
+node_modules/
+.github/
+*.log
+*.tgz
+.DS_Store
+vendor/
+.cache/
+test/
