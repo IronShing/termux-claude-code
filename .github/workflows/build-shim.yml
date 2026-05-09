@@ -23,36 +23,31 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    container:
-      image: alpine:3.21
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install build deps
-        run: |
-          set -eux
-          apk add --no-cache build-base musl-dev curl tar
-          # Cross-compiling x86_64 -> aarch64 needs a cross toolchain. Alpine
-          # provides aarch64 native but on x86_64 hosts we need musl-cross.
-          # Easiest path: bring in musl.cc's pre-built toolchain.
-          apk add --no-cache xz
-          mkdir -p /opt/cross
-          curl -fsSL https://musl.cc/aarch64-linux-musl-cross.tgz | tar -xzf - -C /opt/cross
-          /opt/cross/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc --version
+      - name: Install Zig (bundles aarch64-musl cross-compiler)
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.13.0
 
       - name: Compile shim for aarch64-musl
         run: |
           set -eux
-          export PATH=/opt/cross/aarch64-linux-musl-cross/bin:$PATH
           mkdir -p dist
-          aarch64-linux-musl-gcc \
+          # Zig bundles a complete aarch64-linux-musl sysroot — no external
+          # cross-toolchain to download. -fno-stack-check avoids a Zig-specific
+          # __zig_probe_stack reference that musl's runtime won't have.
+          zig cc \
+            -target aarch64-linux-musl \
             -shared -fPIC -O2 -Wall -Wextra \
             -fvisibility=default \
+            -fno-stack-check \
             -o dist/libtcc-resolv-redirect.so \
-            shim/resolv-redirect.c \
-            -ldl
-          aarch64-linux-musl-strip dist/libtcc-resolv-redirect.so
+            shim/resolv-redirect.c
           file dist/libtcc-resolv-redirect.so
+          # Confirm aarch64 + dynamic + no glibc references.
+          file dist/libtcc-resolv-redirect.so | grep -q 'aarch64' || (echo "Wrong arch"; exit 1)
           sha256sum dist/libtcc-resolv-redirect.so | tee dist/libtcc-resolv-redirect.so.sha256
 
       - name: Upload as workflow artifact
@@ -67,10 +62,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eux
-          apk add --no-cache github-cli || (
-            curl -fsSL https://github.com/cli/cli/releases/download/v2.62.0/gh_2.62.0_linux_amd64.tar.gz | tar -xz
-            mv gh_2.62.0_linux_amd64/bin/gh /usr/local/bin/
-          )
           gh release upload "${{ github.event.release.tag_name }}" \
             dist/libtcc-resolv-redirect.so \
             dist/libtcc-resolv-redirect.so.sha256 \
