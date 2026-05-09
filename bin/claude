@@ -74,4 +74,20 @@ export CLAUDE_CODE_INSTALLED_VIA_NPM_WRAPPER="${CLAUDE_CODE_INSTALLED_VIA_NPM_WR
 # directly, not via a Bionic exec*() that would need path translation.
 unset LD_PRELOAD
 
+# Resolve /etc/resolv.conf inside the musl-loaded binary. Termux's system
+# /etc is read-only and has no resolv.conf, so musl falls back to 127.0.0.1
+# which surfaces as ECONNREFUSED on api.anthropic.com. Our LD_PRELOAD shim
+# (compiled against musl, see shim/resolv-redirect.c) intercepts open() for
+# /etc/resolv.conf and /etc/hosts and redirects them under the env-var dir.
+SHIM="$PKG_ROOT/vendor/shim/libtcc-resolv-redirect.so"
+SHIM_ETC="$PKG_ROOT/vendor/shim/etc"
+if [ -f "$SHIM" ] && [ -d "$SHIM_ETC" ]; then
+  export LD_PRELOAD="$SHIM"
+  export TERMUX_CLAUDE_CODE_ETC="$SHIM_ETC"
+else
+  echo "[termux-claude-code] WARNING: resolv.conf shim not present at $SHIM" >&2
+  echo "[termux-claude-code]   DNS may fail with ECONNREFUSED on api.anthropic.com." >&2
+  echo "[termux-claude-code]   Re-run: node \"$PKG_ROOT/install.js\"" >&2
+fi
+
 exec "$LOADER" --library-path "$LIBDIR" "$BINARY" "$@"

@@ -53,6 +53,7 @@ function loadModules() {
     upstream: require('./lib/upstream'),
     lockdown: require('./lib/lockdown'),
     settings: require('./lib/settings'),
+    shim: require('./lib/shim'),
   }
 }
 
@@ -182,6 +183,28 @@ async function bootstrap() {
   // 2. Upstream native binary (~225 MB).
   const upstream = await m.upstream.ensureUpstreamBinary(PKG_ROOT, upstreamVersion)
   log(`upstream binary: ${upstream.cached ? 'cached' : 'installed'} → ${upstream.binary}`)
+
+  // 2a. resolv.conf shim. musl reads /etc/resolv.conf at the literal system
+  // path — Termux's read-only /etc has no such file, so DNS fails inside the
+  // claude binary unless we LD_PRELOAD a redirector. shim.js writes the
+  // vendored etc/ files unconditionally and downloads the .so when CFG.shim
+  // is configured; if CFG.shim is missing we still write the etc/ files so
+  // the bin/claude shim can warn intelligently.
+  if (CFG.shim && CFG.shim.url) {
+    try {
+      const shim = await m.shim.ensureShim(PKG_ROOT, CFG.shim)
+      log(`resolv shim: ${shim.cached ? 'cached' : 'installed'} → ${shim.shim}`)
+    } catch (err) {
+      warn(`resolv shim install failed: ${err.message}`)
+      warn('  DNS may fail with ECONNREFUSED — the binary still launches.')
+      m.shim.writeEtcFiles(PKG_ROOT) // at least populate etc/ for a future retry
+    }
+  } else {
+    m.shim.writeEtcFiles(PKG_ROOT)
+    warn('No resolv shim URL in package.json — DNS workaround will not be active.')
+    warn('  Build manually: cd shim && aarch64-linux-musl-gcc -shared -fPIC -O2 \\')
+    warn('    -o ../vendor/shim/libtcc-resolv-redirect.so resolv-redirect.c -ldl')
+  }
 
   // Defensive verification — never assume the previous step's output is intact.
   const finalLoader = m.musl.loaderPath(PKG_ROOT)
