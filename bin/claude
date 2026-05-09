@@ -65,4 +65,13 @@ export DISABLE_AUTOUPDATER="${DISABLE_AUTOUPDATER:-1}"
 # we set it too so any upstream telemetry attribution stays accurate.
 export CLAUDE_CODE_INSTALLED_VIA_NPM_WRAPPER="${CLAUDE_CODE_INSTALLED_VIA_NPM_WRAPPER:-1}"
 
+# Termux preloads libtermux-exec-ld-preload.so for syscall shimming. It is
+# linked against Bionic libc and references Bionic-internal symbols
+# (__register_atfork, __strlen_chk, etc.) that musl does not provide. If we
+# leave LD_PRELOAD set, musl's loader prints a wall of relocation errors
+# trying (and failing) to load it. Unset before exec — our musl-loaded child
+# does not need Termux's exec shim because we are launching via the loader
+# directly, not via a Bionic exec*() that would need path translation.
+unset LD_PRELOAD
+
 exec "$LOADER" --library-path "$LIBDIR" "$BINARY" "$@"
