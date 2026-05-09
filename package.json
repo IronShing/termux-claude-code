@@ -1,6 +1,6 @@
 {
   "name": "termux-claude-code",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Run the latest security-patched @anthropic-ai/claude-code on Termux (Android). Community-maintained wrapper. Not affiliated with Anthropic.",
   "keywords": [
     "claude",
@@ -49,6 +49,10 @@
         "https://mirrors.edge.kernel.org/alpine/v3.21/main/aarch64/musl-1.2.5-r11.apk",
         "https://mirror.csclub.uwaterloo.ca/alpine/v3.21/main/aarch64/musl-1.2.5-r11.apk"
       ]
+    },
+    "shim": {
+      "url": "https://github.com/IronShing/termux-claude-code/releases/download/v0.1.2/libtcc-resolv-redirect.so",
+      "sha256": "e62a49b2513301d3d22163ad0287b6cb6c4d0047cc1b17746e2db7a3ff7f571b"
     }
   }
 }
