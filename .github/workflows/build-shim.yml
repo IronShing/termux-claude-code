@@ -1,0 +1,77 @@
+name: Build resolv-redirect shim
+
+# Builds shim/resolv-redirect.c against aarch64 musl and uploads the .so
+# as a release asset whenever a release is published. Also runs on push/PR
+# to verify the source still compiles.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'shim/**'
+      - '.github/workflows/build-shim.yml'
+  pull_request:
+    paths:
+      - 'shim/**'
+      - '.github/workflows/build-shim.yml'
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    container:
+      image: alpine:3.21
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build deps
+        run: |
+          set -eux
+          apk add --no-cache build-base musl-dev curl tar
+          # Cross-compiling x86_64 -> aarch64 needs a cross toolchain. Alpine
+          # provides aarch64 native but on x86_64 hosts we need musl-cross.
+          # Easiest path: bring in musl.cc's pre-built toolchain.
+          apk add --no-cache xz
+          mkdir -p /opt/cross
+          curl -fsSL https://musl.cc/aarch64-linux-musl-cross.tgz | tar -xzf - -C /opt/cross
+          /opt/cross/aarch64-linux-musl-cross/bin/aarch64-linux-musl-gcc --version
+
+      - name: Compile shim for aarch64-musl
+        run: |
+          set -eux
+          export PATH=/opt/cross/aarch64-linux-musl-cross/bin:$PATH
+          mkdir -p dist
+          aarch64-linux-musl-gcc \
+            -shared -fPIC -O2 -Wall -Wextra \
+            -fvisibility=default \
+            -o dist/libtcc-resolv-redirect.so \
+            shim/resolv-redirect.c \
+            -ldl
+          aarch64-linux-musl-strip dist/libtcc-resolv-redirect.so
+          file dist/libtcc-resolv-redirect.so
+          sha256sum dist/libtcc-resolv-redirect.so | tee dist/libtcc-resolv-redirect.so.sha256
+
+      - name: Upload as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: libtcc-resolv-redirect-aarch64-musl
+          path: dist/
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+          apk add --no-cache github-cli || (
+            curl -fsSL https://github.com/cli/cli/releases/download/v2.62.0/gh_2.62.0_linux_amd64.tar.gz | tar -xz
+            mv gh_2.62.0_linux_amd64/bin/gh /usr/local/bin/
+          )
+          gh release upload "${{ github.event.release.tag_name }}" \
+            dist/libtcc-resolv-redirect.so \
+            dist/libtcc-resolv-redirect.so.sha256 \
+            --clobber
