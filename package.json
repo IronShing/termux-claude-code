@@ -52,7 +52,7 @@
     },
     "shim": {
       "url": "https://github.com/IronShing/termux-claude-code/releases/download/v0.1.2/libtcc-resolv-redirect.so",
-      "sha256": "bd39dc6fbfc6c94214f0ae1ec3d6728daf58deddbbf792946762ab340a9ed4e5"
+      "sha256": "00debaff595afb07fdef3edadc52263ff25e965c93cd00ea65e8bff9ce83c63e"
     }
   }
 }
