@@ -19,6 +19,11 @@
  *
  * No other paths are touched. If the env var is unset the shim is a no-op.
  *
+ * Diagnostics: set TERMUX_CLAUDE_CODE_SHIM_DEBUG=1 to log shim load + every
+ * intercepted call (including the requested path) to stderr. Use this to
+ * verify LD_PRELOAD took effect and to see what paths the host process
+ * actually opens.
+ *
  * Build: aarch64-linux-musl-gcc -shared -fPIC -O2 -o libtcc-resolv-redirect.so resolv-redirect.c -ldl
  */
 
@@ -31,9 +36,42 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 static const char *ETC_RESOLV = "/etc/resolv.conf";
 static const char *ETC_HOSTS  = "/etc/hosts";
+
+static int debug_enabled(void) {
+	const char *v = getenv("TERMUX_CLAUDE_CODE_SHIM_DEBUG");
+	return v != NULL && *v == '1';
+}
+
+static void debug_log(const char *fn, const char *path, const char *redir) {
+	if (!debug_enabled()) return;
+	char line[8192];
+	int n;
+	if (redir != NULL) {
+		n = snprintf(line, sizeof(line),
+			"[shim:%d] %s(\"%s\") -> \"%s\"\n",
+			(int) getpid(), fn, path ? path : "(null)", redir);
+	} else {
+		n = snprintf(line, sizeof(line),
+			"[shim:%d] %s(\"%s\")\n",
+			(int) getpid(), fn, path ? path : "(null)");
+	}
+	if (n > 0) (void) write(2, line, (size_t) n);
+}
+
+__attribute__((constructor))
+static void shim_init(void) {
+	if (!debug_enabled()) return;
+	const char *root = getenv("TERMUX_CLAUDE_CODE_ETC");
+	char line[4096];
+	int n = snprintf(line, sizeof(line),
+		"[shim:%d] loaded; TERMUX_CLAUDE_CODE_ETC=%s\n",
+		(int) getpid(), root ? root : "(unset)");
+	if (n > 0) (void) write(2, line, (size_t) n);
+}
 
 /* Resolve to a buffer the caller owns. Returns the original path if no
  * redirect applies, or a pointer into out_buf if redirected. */
@@ -74,6 +112,7 @@ open(const char *path, int flags, ...)
 
 	char buf[4096];
 	const char *p = maybe_redirect(path, buf, sizeof(buf));
+	debug_log("open", path, p == path ? NULL : p);
 	return real(p, flags, mode);
 }
 
@@ -93,6 +132,7 @@ openat(int dirfd, const char *path, int flags, ...)
 
 	char buf[4096];
 	const char *p = maybe_redirect(path, buf, sizeof(buf));
+	debug_log("openat", path, p == path ? NULL : p);
 	return real(dirfd, p, flags, mode);
 }
 
@@ -104,6 +144,7 @@ fopen(const char *path, const char *mode)
 
 	char buf[4096];
 	const char *p = maybe_redirect(path, buf, sizeof(buf));
+	debug_log("fopen", path, p == path ? NULL : p);
 	return real(p, mode);
 }
 
@@ -121,5 +162,6 @@ fopen64(const char *path, const char *mode)
 
 	char buf[4096];
 	const char *p = maybe_redirect(path, buf, sizeof(buf));
+	debug_log("fopen64", path, p == path ? NULL : p);
 	return real(p, mode);
 }
